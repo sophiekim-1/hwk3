@@ -1,0 +1,652 @@
+---
+title: "Homework 3"
+subtitle: "Submission 2, Spring 2026"
+author: "Sophie Kim"
+format:
+  pdf:
+    output-file: "Kim-S-hwk3-2"
+    output-ext:  "pdf"
+    header-includes:
+      - \usepackage{float}
+      - \floatplacement{table}{H}
+---
+
+```{r}
+#| include: false
+library(tidyverse)
+library(stringr)
+library(readr)
+library(fs)
+library(ggplot2)
+library(dplyr)
+library(broom)
+library(tidyr)
+```
+
+```{r}
+#| include: false
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, ggplot2, dplyr, lubridate, stringr, readxl, data.table, gdata, scales, data.table)
+
+install.packages("knitr", lib="~/R/x86_64-conda-linux-gnu-library/4.3")
+install.packages("rmarkdown", lib="~/R/x86_64-conda-linux-gnu-library/4.3")
+```
+
+```{r}
+#| include: false
+data.2010 <- read_csv("..//data/data-2010.csv")
+data.2011 <- read_csv("..//data/data-2011.csv")
+data.2012 <- read_csv("..//data/data-2012.csv")
+data.2013 <- read_csv("..//data/data-2013.csv")
+data.2014 <- read_csv("..//data/data-2014.csv")
+data.2015 <- read_csv("..//data/data-2015.csv")
+```
+
+# Problem 1
+
+```{r}
+#| include: false
+fix_type <- function(df) {
+  df$org_parent <- as.character(df$org_parent)
+  df
+}
+
+data.2011 <- fix_type(data.2011)
+```
+
+```{r}
+#| include: false
+combined <- bind_rows(
+  data.2010,
+  data.2011,
+  data.2012,
+  data.2013,
+  data.2014,
+  data.2015
+) %>%
+  mutate(mkt_share = avg_enrollment / avg_enrolled)
+```
+
+```{r}
+#| include: false
+colnames(combined)
+```
+
+
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Mean star rating, number of enrollments, market share for plans by year"
+# use star_rating for 1-4 and then use partc_score for 5-10
+
+summary_table <- combined %>%
+  group_by(year) %>%
+  summarise(
+    `Mean Star Rating` = round(mean(Star_Rating, na.rm = TRUE), 2),
+    `Mean Enrollments` = round(mean(avg_enrollment, na.rm = TRUE), 2),
+    `Mean Market Share` = round(mean(mkt_share, na.rm = TRUE), 4),
+    `Total Plans` = n()
+  )
+
+print(summary_table)
+```
+
+\newpage
+
+# Problem 2
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Mean for plans w/o star rating by year"
+summary_no_rating <- combined %>%
+  filter(is.na(Star_Rating)) %>%
+  group_by(year) %>%
+  summarise(
+    `Mean Enrollments` = round(mean(avg_enrollment, na.rm = TRUE), 2),
+    `Mean Market Share` = round(mean(mkt_share, na.rm = TRUE), 4),
+    `Total Plans` = n()
+  )
+
+print(summary_no_rating)
+```
+
+\newpage
+
+# Problem 3
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Distribution of Star Ratings (2010, 2012, 2015)"
+
+combined %>%
+  filter(year %in% c(2010, 2012, 2015), !is.na(Star_Rating)) %>%
+  mutate(year = as.factor(year)) %>%
+  ggplot(aes(x = as.factor(Star_Rating))) +
+  geom_bar() +
+  facet_wrap(~ year) +
+  labs(
+    title = "Distribution of Star Ratings in 2010, 2012, and 2015",
+    x = "Star Rating",
+    y = "Number of Plans"
+  ) +
+  theme_minimal()
+```
+
+\newpage
+
+# Problem 4
+
+```{r}
+#| include: false
+
+combined <- combined %>%
+  mutate(
+    star_3   = as.integer(Star_Rating == 3),
+    star_35  = as.integer(Star_Rating== 3.5),
+    star_4   = as.integer(Star_Rating == 4),
+    star_45  = as.integer(Star_Rating >= 4.5)
+  )
+
+results_list <- list()
+
+for(yr in 2010:2015){
+  cat("\nYear:", yr, "\n")
+  ols <- lm(mkt_share ~ star_3 + star_35 + star_4 + star_45, 
+            data = combined %>% filter(year == yr, !is.na(Star_Rating), !is.na(mkt_share)))
+  print(summary(ols))
+}
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "OLS Results"
+
+results_list <- list()
+
+for(yr in 2010:2015){
+  ols <- lm(mkt_share ~ star_3 + star_35 + star_4 + star_45, 
+            data = combined %>% filter(year == yr, !is.na(partc_score), !is.na(mkt_share)))
+  results_list[[as.character(yr)]] <- coef(ols)
+}
+
+ols_table <- as.data.frame(results_list)
+colnames(ols_table) <- c("2010", "2011", "2012", "2013", "2014", "2015")
+rownames(ols_table) <- c("Intercept (≤2.5 stars)", "3 Stars", "3.5 Stars", "4 Stars", "4.5+ Stars")
+
+print(round(ols_table, 4))
+```
+
+\newpage
+
+# Problem 5
+
+
+```{r}
+#| include: false
+quality_vars <- c(
+  "breastcancer_screen",
+  "rectalcancer_screen",
+  "cv_diab_cholscreen",
+  "glaucoma_test",
+  "monitoring",
+  "flu_vaccine",
+  "pn_vaccine",
+  "physical_health",
+  "mental_health",
+  "osteo_test",
+  "physical_monitor",
+  "primaryaccess",
+  "osteo_manage",
+  "diab_healthy",
+  "bloodpressure",
+  "ra_manage",
+  "copd_test",
+  "bladder",
+  "falling",
+  "nodelays",
+  "doctor_communicate",
+  "carequickly",
+  "customer_service",
+  "overallrating_care",
+  "overallrating_plan",
+  "complaints_plan",
+  "appeals_timely",
+  "appeals_review",
+  "leave_plan",
+  "audit_problems",
+  "hold_times",
+  "info_accuracy",
+  "ttyt_available"
+)
+
+datanew.2010 <- data.2010 %>%
+  mutate(
+    mkt_share = avg_enrollment / avg_enrolled)  %>%
+    rowwise() %>%
+  mutate(
+    raw_rating = mean(c_across(all_of(quality_vars)), na.rm = TRUE)
+  ) %>%
+  ungroup()
+```
+
+```{r}
+#| include: false
+colnames(datanew.2010)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Number of Plans Rounded Up"
+round_up_counts <- datanew.2010 %>%
+  distinct(contractid, fips, .keep_all = TRUE) %>%
+  filter(!is.na(raw_rating)) %>%
+  filter(!is.na(partc_score)) %>%
+  mutate(
+    round_ups = ifelse(raw_rating >= 2.75 & raw_rating < 3.00 & partc_score == 3.0, "Rounded up to 3",
+               ifelse(raw_rating >= 3.25 & raw_rating < 3.5 & partc_score == 3.5, "Rounded up to 3.5",
+               ifelse(raw_rating >= 3.75 & raw_rating < 4.0 & partc_score == 4.0, "Rounded up to 4",
+               ifelse(raw_rating >= 4.25 & raw_rating < 4.5 & partc_score == 4.5, "Rounded up to 4.5",
+               ifelse(raw_rating >= 4.75 & partc_score == 5.0, "Rounded up to 5",
+               NA)))))
+  ) %>%
+  filter(!is.na(round_ups)) %>%
+  count(round_ups) %>%
+  rename('Star Rating' = round_ups, 'Number Of Plans' = n)
+
+print(round_up_counts)
+```
+
+\newpage
+
+# Problem 6
+
+```{r}
+#| include: false
+run_rd_ols <- function(data, cutoff, stars_below, stars_above) {
+  data %>%
+    filter(!is.na(raw_rating), !is.na(partc_score),
+           partc_score %in% c(stars_below, stars_above)) %>%
+    mutate(
+      score = raw_rating - cutoff,
+      treat = as.integer(score >= 0),
+      score_treat = score * treat
+    ) %>%
+    filter(score >= -0.125, score <= 0.125) %>%
+    lm(mkt_share ~ score + treat + score_treat, data = .)
+}
+
+star3  <- run_rd_ols(datanew.2010, cutoff = 2.75, stars_below = 2.5, stars_above = 3.0)
+star3.5 <- run_rd_ols(datanew.2010, cutoff = 3.25, stars_below = 3.0, stars_above = 3.5)
+
+rename_coefs <- function(mod) {
+  s <- summary(mod)
+  rownames(s$coefficients) <- c("Intercept", "Running Score", "Rounded", "Running Score x Treat")
+  print(s)
+}
+
+rename_coefs(star3)
+rename_coefs(star3.5)
+
+print (star3)
+print (star3.5)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Estimate of Effects at 3, 3.5 Stars"
+
+results_table <- data.frame(
+  Statistic     = c("Intercept", "Rounded", "Running Score", "Num.Obs.", "R2"),
+  `3 Stars`     = c(
+    round(coef(star3)["(Intercept)"], 3),
+    round(coef(star3)["treat"],        3),
+    round(coef(star3)["score"],        3),
+    nobs(star3),
+    round(summary(star3)$r.squared,    3)
+  ),
+  `3.5 Stars`   = c(
+    round(coef(star3.5)["(Intercept)"], 3),
+    round(coef(star3.5)["treat"],        3),
+    round(coef(star3.5)["score"],        3),
+    nobs(star3.5),
+    round(summary(star3.5)$r.squared,    3)
+  ),
+  check.names = FALSE
+)
+
+print(results_table, row.names = FALSE)
+```
+
+\newpage
+
+
+# Problem 7
+
+3 stars estimates are stable across all bandwidths, 3.5 estimates are more sensitive to bandwidth choice. Both are relatively robust as the sign of both effects do not change. 
+
+```{r}
+#| include: false
+install.packages("rdrobust")
+library(rdrobust)
+```
+
+```{r}
+#| include: false
+rd1 <- datanew.2010 %>%
+  filter(!is.na(raw_rating), !is.na(mkt_share)) %>%
+  mutate(score = raw_rating - 2.75)   # center running variable at cutoff
+
+
+est0.1 <- rdrobust(y = rd1$mkt_share, x = rd1$score, c = 0,
+                 h = 0.1, p = 1, kernel = "uniform", vce = "hc0")
+est0.12 <- rdrobust(y = rd1$mkt_share, x = rd1$score, c = 0,
+                 h = 0.12, p = 1, kernel = "uniform", vce = "hc0")
+est0.13 <- rdrobust(y = rd1$mkt_share, x = rd1$score, c = 0,
+                 h = 0.13, p = 1, kernel = "uniform", vce = "hc0")
+est0.14 <- rdrobust(y = rd1$mkt_share, x = rd1$score, c = 0,
+                 h = 0.14, p = 1, kernel = "uniform", vce = "hc0")
+est0.15 <- rdrobust(y = rd1$mkt_share, x = rd1$score, c = 0,
+                 h = 0.15, p = 1, kernel = "uniform", vce = "hc0")
+
+results_table_275 <- tibble(
+  Bandwidth = c(0.10, 0.12, 0.13, 0.14, 0.15),
+  Estimate = c(
+    est0.1$coef[1],
+    est0.12$coef[1],
+    est0.13$coef[1],
+    est0.14$coef[1],
+    est0.15$coef[1]
+  ),
+  CI_lower = c(
+    est0.1$coef[1]  - 1.96 * est0.1$se[1],
+    est0.12$coef[1] - 1.96 * est0.12$se[1],
+    est0.13$coef[1] - 1.96 * est0.13$se[1],
+    est0.14$coef[1] - 1.96 * est0.14$se[1],
+    est0.15$coef[1] - 1.96 * est0.15$se[1]
+  ),
+  CI_upper = c(
+    est0.1$coef[1]  + 1.96 * est0.1$se[1],
+    est0.12$coef[1] + 1.96 * est0.12$se[1],
+    est0.13$coef[1] + 1.96 * est0.13$se[1],
+    est0.14$coef[1] + 1.96 * est0.14$se[1],
+    est0.15$coef[1] + 1.96 * est0.15$se[1]
+  )
+)
+
+# print(results_table_275)
+
+ggplot(results_table_275, aes(x = Bandwidth, y = Estimate)) +
+  geom_line(size = 1.2, color = "darkred") +
+  geom_point(size = 2.5, color = "darkred") +
+  geom_ribbon(aes(ymin = CI_lower, ymax = CI_upper), alpha = 0.2, fill = "darkred") +
+  scale_y_continuous(breaks = seq(0.00, 0.10, by = 0.01)) +
+  labs(
+    title = "RD Estimates Across Bandwidths (Cutoff = 2.75)",
+    x = "Bandwidth",
+    y = "Estimated Jump in Market Share (%)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#| include: false
+rd2 <- datanew.2010 %>%
+  filter(!is.na(raw_rating), !is.na(mkt_share)) %>%
+  mutate(score = raw_rating - 3.25)   # center running variable at cutoff
+
+est3 <- rdrobust(y = rd2$mkt_share, x = rd2$score, c = 0,
+                 h = 0.1, p = 1, kernel = "uniform", vce = "hc0")
+
+est4 <- rdrobust(y = rd2$mkt_share, x = rd2$score, c = 0,
+                 h = 0.12, p = 1, kernel = "uniform", vce = "hc0")
+
+est5 <- rdrobust(y = rd2$mkt_share, x = rd2$score, c = 0,
+                 h = 0.13, p = 1, kernel = "uniform", vce = "hc0")
+
+est6 <- rdrobust(y = rd2$mkt_share, x = rd2$score, c = 0,
+                 h = 0.14, p = 1, kernel = "uniform", vce = "hc0")
+
+est7 <- rdrobust(y = rd2$mkt_share, x = rd2$score, c = 0,
+                 h = 0.15, p = 1, kernel = "uniform", vce = "hc0")
+
+results_table_325 <- tibble(
+  Bandwidth = c(0.10, 0.12, 0.13, 0.14, 0.15),
+  Estimate = c(
+    est3$coef[1],
+    est4$coef[1],
+    est5$coef[1],
+    est6$coef[1],
+    est7$coef[1]
+  ),
+  CI_lower = c(
+    est3$coef[1]  - 1.96 * est0.1$se[1],
+    est4$coef[1] - 1.96 * est0.12$se[1],
+    est5$coef[1] - 1.96 * est0.13$se[1],
+    est6$coef[1] - 1.96 * est0.14$se[1],
+    est7$coef[1] - 1.96 * est0.15$se[1]
+  ),
+  CI_upper = c(
+    est3$coef[1]  + 1.96 * est0.1$se[1],
+    est4$coef[1] + 1.96 * est0.12$se[1],
+    est5$coef[1] + 1.96 * est0.13$se[1],
+    est6$coef[1] + 1.96 * est0.14$se[1],
+    est7$coef[1] + 1.96 * est0.15$se[1]
+  )
+)
+
+# print(results_table_325)
+
+ggplot(results_table_325, aes(x = Bandwidth, y = Estimate)) +
+  geom_line(size = 1.2, color = "darkred") +
+  geom_point(size = 2.5, color = "darkred") +
+  geom_ribbon(aes(ymin = CI_lower, ymax = CI_upper), alpha = 0.2, fill = "darkred") +
+  scale_y_continuous(breaks = seq(0.00, 0.10, by = 0.01)) +
+  labs(
+    title = "RD Estimates Across Bandwidths (Cutoff = 3.25)",
+    x = "Bandwidth",
+    y = "Estimated Jump in Market Share (%)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Different Bandwidths"
+
+results_combined <- bind_rows(
+  results_table_275 %>% mutate(Cutoff = "2.75"),
+  results_table_325 %>% mutate(Cutoff = "3.25")
+)
+
+ggplot(results_combined, aes(x = Bandwidth, y = Estimate, color = Cutoff, fill = Cutoff)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2.5) +
+  geom_ribbon(aes(ymin = CI_lower, ymax = CI_upper), alpha = 0.2, color = NA) +
+  scale_color_manual(values = c("2.75" = "darkred", "3.25" = "steelblue")) +
+  scale_fill_manual(values = c("2.75" = "darkred", "3.25" = "steelblue")) +
+  scale_y_continuous(breaks = seq(-0.10, 0.10, by = 0.01)) +  labs(
+    title = "RD Estimates Across Bandwidths",
+    x = "Bandwidth",
+    y = "Estimated Jump in Market Share (%)",
+    color = "Cutoff",
+    fill = "Cutoff"
+  ) +
+  theme_minimal()
+
+# set kernel to uniform so that it's not a weighted mean 
+# cutoff +- 0.125, run linear regression within that window
+```
+
+\newpage
+
+# Problem 8
+
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Distribution of Running Rariable Near 2.75 Threshold"
+
+plans_3 <- datanew.2010 %>%
+  filter(
+    !is.na(raw_rating),
+    !is.na(partc_score),
+    Star_Rating %in% c(2.5, 3)
+  )
+
+band_3 <- plans_3 %>%
+  filter(
+    raw_rating >= 2.5,
+    raw_rating <= 3,
+    (raw_rating < 2.75  & Star_Rating == 2.5) |
+    (raw_rating >= 2.75 & Star_Rating == 3)
+  )
+
+rd_3 <- band_3 %>%
+  mutate(
+    score = raw_rating - 2.75,          
+    treat_group = score >= 0,           
+    in_window = between(score, -0.125, 0.125),
+    interaction = score * treat_group
+  )
+
+p_3 <- ggplot(rd_3 %>% filter(in_window),
+             aes(x = score, y = mkt_share, color = treat_group)) +
+  geom_point(alpha = 0.45, size = 1.4) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.9) +
+  scale_color_manual(
+    values = c("FALSE" = "#E57373", "TRUE" = "#4F81BD"),
+    labels = c("2.5 Stars", "3 Stars")
+  ) +
+  labs(
+    title = "Market Share Around the 2.5 vs 3 Star Cutoff",
+    x = "Centered Score (raw rating − 2.75)",
+    y = "Market Share",
+    color = "Assigned Rating"
+  ) +
+  theme_minimal()
+
+p_3
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-cap: "Distribution of Running Rariable Near 3.25 Threshold"
+
+
+plans_3.5 <- datanew.2010 %>%
+  filter(
+    !is.na(raw_rating),
+    !is.na(partc_score),
+    Star_Rating %in% c(3, 3.5)
+  )
+
+band_3.5 <- plans_3.5 %>%
+  filter(
+    raw_rating >= 3,
+    raw_rating <= 3.5,
+    (raw_rating < 3.25  & Star_Rating == 3) |
+    (raw_rating >= 3.25 & Star_Rating == 3.5)
+  )
+
+rd_3.5 <- band_3.5 %>%
+  mutate(
+    score = raw_rating - 3.25,          
+    treat_group = score >= 0,      
+    in_window = between(score, -0.125, 0.125),
+    interaction = score * treat_group
+  )
+
+p_3.5 <- ggplot(rd_3.5 %>% filter(in_window), 
+             aes(x = score, y = mkt_share, color = treat_group)) +
+  geom_point(alpha = 0.45, size = 1.4) +
+  geom_smooth(method = "lm", se = TRUE) +
+  geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.9) +
+  scale_color_manual(
+    values = c("FALSE" = "#E57373", "TRUE" = "#4F81BD"),
+    labels = c("3 Stars", "3.5 Stars")
+  ) +
+  labs(
+    title = "Market Share Around the 3 vs 3.5 Star Cutoff",
+    x = "Centered Score (raw rating − 3.25)",
+    y = "Market Share",
+    color = "Assigned Rating"
+  ) +
+  theme_minimal()
+
+p_3.5
+```
+
+\newpage
+
+# Problem 9
+
+```{r}
+#| echo: false
+#| warning: false
+
+near_275 <- datanew.2010 %>%
+  mutate(
+    score = raw_rating - 2.75,
+    group = ifelse(score >= 0, "Above cutoff", "Below cutoff")
+  ) %>%
+  filter(score >= -0.125, score <= 0.125) %>%
+  mutate(
+    HMO = str_detect(plan_type, "HMO"),
+    PartD = partd == "Yes"
+  ) %>%
+  group_by(group) %>%
+  summarise(
+    share_HMO = mean(HMO),
+    share_PartD = mean(PartD),
+    n = n()
+  )
+
+cat("Table: Plan Characteristics Around the 2.75 Cutoff\n")
+print(near_275)
+```
+
+```{r}
+#| echo: false
+#| warning: false
+
+near_325 <- datanew.2010 %>%
+  mutate(
+    score = raw_rating - 3.25,
+    group = ifelse(score >= 0, "Above cutoff", "Below cutoff")) %>%
+  filter(score >= -0.125, score <= 0.125) %>%
+  mutate(
+    HMO = str_detect(plan_type, "HMO"),
+    PartD = partd == "Yes") %>%
+ 
+group_by(group) %>%
+  summarise(
+    share_HMO = mean(HMO),
+    share_PartD = mean(PartD),
+    n = n()
+  )
+
+cat("Table: Plan Characteristics Around the 3.25 Cutoff (3–3.5 Stars)\n")
+print(near_325)
+```
+
+These tables show you whether plans just above each cutoff look similar to plans just below it. Plans just above the 2.75 threshold are completely different types of plans as the ones above are much more likely to be HMOs and to offer Part D. Plans for just above the 3.25 thresold are slightly different but to a lesser degree. 
+
+\newpage
+
+# Problem 10 
+
+Overall, a higher star rating shows more enrollment but the comparison is compromised as plans above and below the threshold are different. Raw ratings tend to be more distributed around the thresholds (2.75 and 3.25), and the adjusted ratings create jumps in star assignments. Because plan characteristics are distinct and not comparable right above or below the cutoff, the RD model cannot cleanly isolate the effect of the star rating alone. 
+
+
